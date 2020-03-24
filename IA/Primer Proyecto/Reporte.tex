@@ -1,4 +1,3 @@
-
 \documentclass[11pt]{report}            % Report class in 11 points
 \parindent0pt  \parskip10pt             % make block paragraphs
 \raggedright                            % do not right-justify
@@ -6,6 +5,14 @@
 \usepackage{listings}
 \usepackage[T1]{fontenc}
 \usepackage{textcomp}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
 
 \title{\bf Implementing an Agent with pysc2}  % Supply information
 \author{Miguel Angel Navarro Mata}              %   for the title page.
@@ -18,7 +25,7 @@
 \tableofcontents                        % Print table of contents
 
 \newpage
-\section{Introduction}
+\chapter{Introduction}
 In this document we are going to be reviewing the implementation of a Zerg Bot with PySC2 2.0 by Steven Brown.
 Before we start we need to ensure we have installed the following items in our environment:
 \begin{quote}
@@ -27,7 +34,7 @@ Python 3.x.x \\*
 PySC2 2.0 \\*
 \end{quote}
 
-\section{Creating the basic Agent}
+\chapter{Creating the basic Agent}
 First we need to import the following libraries
 \begin{lstlisting}[language=Python]
     from pysc2.agents import base_agent
@@ -46,7 +53,7 @@ Now, we can create our agent class:
 \end{lstlisting}
 For now our class only has a method: step. This method it's where all of our decision making takes place. At the end of every step it returns an action. But for now it just return no action because it hasn't had been added the logic to take decisions yet.
 
-\section{Add the Run Code}
+\chapter{Add the Run Code}
 Now we need to set up the environment to run it. For that we need to implement the following code, in which we specify that our agent will be runnning in the map \textbf{Simple64}.
 \begin{lstlisting}[language=Python]
     def main(useless_argv):
@@ -103,7 +110,7 @@ if __name__ == "__main__":
     app.run(main)
 \end{lstlisting}
 To this point our code should be able to run however it does not perform any actions since we haven't implemented yet the logic for it to take decisions about what actions to take. In the following sections we are going to be using the code constructed until this point and improving it by adding more actions.
-\section{Select a Drone}
+\chapter{Select a Drone}
 Before our agent can create any Zerling we need a Spawing Pool. And to build an Spawning Pool, we need to select a drone. So the first step for our agent is going to be select a drone.
 
 We need to add the unit list to the module import:
@@ -143,7 +150,7 @@ if len(drones) > 0:
 The \textbf{select\textunderscore all\textunderscore type} parameter acts like CNTRL + click, so all Drones on the screen will be selected. 
 
 To this point our agent is able to select the drones, the next step will be implementing the code so this Drones can create \emph{Spawning Pools}.
-\section{Build a Spawning Pool}
+\chapter{Build a Spawning Pool}
 Before starting the implementation for this step, we need to validate we have a Drone selected. So let's add this utility method to our agent class:
 \begin{lstlisting}[language=Python]
 def unit_type_is_selected(self, obs, unit_type):
@@ -215,7 +222,7 @@ if len(spawning_pools) == 0:
 
 Now we have a bot that will build a spawning poll if we don't have one already.
 
-\section{Build Zerlings}
+\chapter{Build Zerlings}
 With our Spawning Pool building bot, we can build some Zerlings. The first step is to select all the Larva on the screen:
 \begin{lstlisting}[language=Python]
 # Selects all Larva on the screen
@@ -236,7 +243,7 @@ if self.unit_type_is_selected(obs, units.Zerg.Larva):
 \end{lstlisting}
 To this point our bot is able to create Zerlings, however it's not so effected because our limited supply. In order to make a more effective strategy we need Overlords.
 
-\section{Spawn More Overlords}
+\chapter{Spawn More Overlords}
 We can spawn an Overlord whenever we have no free supply and Larva is selected, so we need to modify what we implemented in the previous step so it looks like this:
 \begin{lstlisting}[language=Python]
 # Creates some Zerlings.
@@ -255,6 +262,47 @@ if self.unit_type_is_selected(obs, units.Zerg.Larva):
 
 If we check our bot now, we will find that it produces Zerlings. The next step will be making all those Zerlings attack.
 
-\section{Attack}
+\chapter{Attack}
+In order to attack, we need to know where our enemies are. In this tutorial we are assuming the spawn locations will always be at top-left and bottom-right. So we need to find out where we are, and attack the other.
+Lets create a attack coordinates variable to know where are the enemies. To do so we need an \textbf{\textunderscore\textunderscore init\textunderscore\textunderscore ()} method to initialise a variable:
+\begin{lstlisting}[language=Python]
+def __init__(self):
+    super(ZergAgent, self).__init__()
+
+    self.attack_coordinates = None
+\end{lstlisting}
+To calculate the attack coordinates we are going get the center x and y of our units and attack the other side. The bottom -right will attack the top-left and otherwise too. To do so, we need to implement code to our \textbf{step()} method.
+\begin{lstlisting}[language=Python]
+# Checks if it's the first step of the game.
+if obs.first():
+    # We get the centre x and y coordinates of 
+    # our units on the minimap.
+    player_y, player_x = (obs.observation.feature_minimap.player_relative
+                        ==
+                        features.PlayerRelative.SELF).nonzero()
+    xmean=player_x.mean()
+    ymean=player_y.mean()
+
+    if xmean <= 31 and ymean <= 31:
+        self.attack_coordinates = (49, 49)
+    else:
+        self.attack_coordinates = (12, 16)
+\end{lstlisting}
+To attack we need to first select our army, and then attack. Implement the following code right after the last block:
+\begin{lstlisting}[language=Python]
+zerlings = self.get_units_by_type(obs, units.Zerg.Zergling)
+    if len(zerlings) >= 10:
+        if self.unit_type_is_selected(obs, units.Zerg.Zergling):
+            if self.can_do(obs, actions.FUNCTIONS.Attack_minimap.id):
+                return actions.FUNCTIONS.Attack_minimap("now",
+                    self.attack_coordinates)
+        
+        if self.can_do(obs, actions.FUNCTIONS.select_army.id):
+            return actions.FUNCTIONS.select_army("select")
+\end{lstlisting}
+We need to wait to have some Zerlings so they don't get murdered, so we set the limit to at least 10.
+
+\chapter{End}
+Yeah! We have implemented a bot using PySC2, you can check my code on this \href{https://github.com/miguelxngx/MachineLearning-IA/blob/master/IA/Primer%20Proyecto/Zerg.py}{github repository}
 
 \end{document}
